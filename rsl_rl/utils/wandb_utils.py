@@ -34,8 +34,10 @@ class WandbSummaryWriter(SummaryWriter):
         except KeyError:
             entity = None
 
+        group = cfg.get("wandb_group", None)
+
         # Initialize wandb
-        wandb.init(project=project, entity=entity, name=run_name)
+        wandb.init(project=project, entity=entity, group=group, name=run_name)
 
         # Add log directory to wandb
         wandb.config.update({"log_dir": log_dir})
