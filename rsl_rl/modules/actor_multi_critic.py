@@ -105,7 +105,7 @@ class ActorMultiCritic(nn.Module):
     def entropy(self):
         return self.distribution.entropy().sum(dim=-1)
 
-    def update_distribution(self, observations):
+    def update_distribution(self, observations: torch.Tensor):
         # compute mean
         mean = self.actor(observations)
         # compute standard deviation
@@ -118,14 +118,14 @@ class ActorMultiCritic(nn.Module):
         # create distribution
         self.distribution = Normal(mean, std)
 
-    def act(self, observations, **kwargs):
+    def act(self, observations: torch.Tensor, **kwargs):
         self.update_distribution(observations)
         return self.distribution.sample()
 
     def get_actions_log_prob(self, actions):
         return self.distribution.log_prob(actions).sum(dim=-1)
 
-    def act_inference(self, observations):
+    def act_inference(self, observations: torch.Tensor):
         actions_mean = self.actor(observations)
         return actions_mean
 
