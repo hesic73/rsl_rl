@@ -70,8 +70,7 @@ class MultiCriticPPORunner:
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
-            # this is used by the symmetry function for handling different observation terms
-            self.alg_cfg["symmetry_cfg"]["_env"] = env
+            raise NotImplementedError("symmetry_cfg is not supported yet.")
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
@@ -135,10 +134,6 @@ class MultiCriticPPORunner:
                 self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
             else:
                 raise ValueError("Logger type not found. Please choose 'neptune', 'wandb' or 'tensorboard'.")
-
-        # check if teacher is loaded
-        if self.training_type == "distillation" and not self.alg.policy.loaded_teacher:
-            raise ValueError("Teacher model parameters not loaded. Please load a teacher model to distill.")
 
         # randomize initial episode lengths (for exploration)
         if init_at_random_ep_len:

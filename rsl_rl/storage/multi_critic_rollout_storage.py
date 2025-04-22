@@ -104,20 +104,22 @@ class MultiCriticRolloutStorage:
             else:
                 next_values = self.values[step + 1]
             # 1 if we are not in a terminal state, 0 otherwise
-            next_is_not_terminal = 1.0 - self.dones[step].float()
+            next_is_not_terminal = 1.0 - self.dones[step].float()  # (num_envs, 1)
             # TD error: r_t + gamma * V(s_{t+1}) - V(s_t)
-            delta = self.rewards[step] + next_is_not_terminal * gamma * next_values - self.values[step]
+            delta = self.rewards[step] + next_is_not_terminal * gamma * next_values - self.values[step]  # (num_envs, num_critics)
             # Advantage: A(s_t, a_t) = delta_t + gamma * lambda * A(s_{t+1}, a_{t+1})
-            advantage = delta + next_is_not_terminal * gamma * lam * advantage
+            advantage = delta + next_is_not_terminal * gamma * lam * advantage  # (num_envs, num_critics)
             # Return: R_t = A(s_t, a_t) + V(s_t)
             self.returns[step] = advantage + self.values[step]
 
         # Compute the advantages
-        self.advantages = self.returns - self.values
+        self.advantages = self.returns - self.values  # (num_transitions_per_env, num_envs, num_critics)
         # Normalize the advantages if flag is set
         # This is to prevent double normalization (i.e. if per minibatch normalization is used)
         if normalize_advantage:
-            self.advantages = (self.advantages - self.advantages.mean(dim=0, keepdim=True)) / (self.advantages.std(dim=0, keepdim=True) + 1e-8)
+            flat_adv = self.advantages.view(-1, self.advantages.shape[-1])  # (T*N, C)
+            flat_adv = (flat_adv - flat_adv.mean(dim=0, keepdim=True)) / (flat_adv.std(dim=0, keepdim=True) + 1e-8)
+            self.advantages = flat_adv.view_as(self.advantages)
 
     # for reinforcement learning with feedforward networks
     def mini_batch_generator(self, num_mini_batches: int, num_epochs: int = 8):

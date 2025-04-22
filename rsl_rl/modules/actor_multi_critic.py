@@ -94,15 +94,15 @@ class ActorMultiCritic(nn.Module):
         raise NotImplementedError
 
     @property
-    def action_mean(self):
+    def action_mean(self) -> torch.Tensor:
         return self.distribution.mean
 
     @property
-    def action_std(self):
+    def action_std(self) -> torch.Tensor:
         return self.distribution.stddev
 
     @property
-    def entropy(self):
+    def entropy(self) -> torch.Tensor:
         return self.distribution.entropy().sum(dim=-1)
 
     def update_distribution(self, observations: torch.Tensor):
@@ -122,10 +122,10 @@ class ActorMultiCritic(nn.Module):
         self.update_distribution(observations)
         return self.distribution.sample()
 
-    def get_actions_log_prob(self, actions):
+    def get_actions_log_prob(self, actions: torch.Tensor) -> torch.Tensor:
         return self.distribution.log_prob(actions).sum(dim=-1)
 
-    def act_inference(self, observations: torch.Tensor):
+    def act_inference(self, observations: torch.Tensor) -> torch.Tensor:
         actions_mean = self.actor(observations)
         return actions_mean
 

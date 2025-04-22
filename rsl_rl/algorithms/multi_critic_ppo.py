@@ -64,7 +64,6 @@ class MultiCriticPPO:
             raise NotImplementedError("RND is not implemented yet.")
         else:
             self.rnd = None
-            self.rnd_optimizer = None
 
         # Symmetry components
         if symmetry_cfg is not None:
@@ -102,7 +101,13 @@ class MultiCriticPPO:
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
     def init_storage(
-        self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape
+        self,
+        training_type: str,
+        num_envs: int,
+        num_transitions_per_env: int,
+        actor_obs_shape: Sequence[int],
+        critic_obs_shape: Optional[Sequence[int]],
+        actions_shape: Sequence[int],
     ):
 
         # create rollout storage

@@ -202,6 +202,10 @@ class OnPolicyRunner:
                     actions = self.alg.act(obs, privileged_obs)
                     # Step the environment
                     obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
+                    # NOTE (hsc): 允许rewards是多维的，这样_get_rewards不需要区分Single Critic和Multi Critic
+                    if len(rewards.shape) != 1:
+                        assert len(rewards.shape) == 2
+                        rewards = rewards.sum(dim=1)
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
                     # perform normalization
@@ -455,7 +459,8 @@ class OnPolicyRunner:
         if self.cfg["empirical_normalization"]:
             if device is not None:
                 self.obs_normalizer.to(device)
-            policy = lambda x: self.alg.policy.act_inference(self.obs_normalizer(x))  # noqa: E731
+
+            def policy(x): return self.alg.policy.act_inference(self.obs_normalizer(x))  # noqa: E731
         return policy
 
     def train_mode(self):
