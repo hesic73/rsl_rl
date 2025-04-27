@@ -12,9 +12,13 @@ import torch
 from collections import deque
 
 import rsl_rl
-from rsl_rl.algorithms import MultiCriticPPO
+from rsl_rl.algorithms import (
+    PPO,
+    MultiCriticPPO
+)
 from rsl_rl.env import VecEnv
 from rsl_rl.modules import (
+    ActorCritic,
     ActorMultiCritic,
     EmpiricalNormalization,
 )
@@ -36,7 +40,11 @@ class MultiCriticPPORunner:
         # check if multi-gpu is enabled
         self._configure_multi_gpu()
 
+        self._is_PPO = False
         if self.alg_cfg["class_name"] == "MultiCriticPPO":
+            self.training_type = "rl"
+        elif self.alg_cfg['class_name'] == "PPO":
+            self._is_PPO = True
             self.training_type = "rl"
         else:
             raise NotImplementedError(
@@ -60,7 +68,13 @@ class MultiCriticPPORunner:
 
         # evaluate the policy class
         policy_class = eval(self.policy_cfg.pop("class_name"))
-        assert policy_class is ActorMultiCritic, "Only ActorMultiCritic is supported."
+        if policy_class is ActorCritic:
+            assert self._is_PPO
+            policy_class = ActorMultiCritic
+            self.policy_cfg['num_critics'] = 1
+        else:
+            assert not self._is_PPO
+            assert policy_class is ActorMultiCritic, "Only ActorMultiCritic is supported."
         policy: ActorMultiCritic = policy_class(
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
@@ -74,7 +88,14 @@ class MultiCriticPPORunner:
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
-        assert alg_class is MultiCriticPPO, "Only MultiCriticPPO is supported."
+        if alg_class is PPO:
+            assert self._is_PPO
+            alg_class = MultiCriticPPO
+            self.alg_cfg['num_critics'] = 1
+            self.alg_cfg['advantage_weights'] = [1.0]
+        else:
+            assert not self._is_PPO
+            assert alg_class is MultiCriticPPO, "Only MultiCriticPPO is supported."
         self.alg: MultiCriticPPO = alg_class(policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
 
         # store training configuration
@@ -168,6 +189,12 @@ class MultiCriticPPORunner:
                     obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    if self._is_PPO:
+                        if len(rewards.shape) == 2:
+                            rewards = rewards.sum(dim=1, keepdim=True)
+                        else:
+                            assert len(rewards.shape) == 1
+                            rewards = rewards.unsqueeze(1)
                     # perform normalization
                     obs = self.obs_normalizer(obs)
                     if self.privileged_obs_type is not None:
