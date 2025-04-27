@@ -24,6 +24,8 @@ from rsl_rl.modules import (
 )
 from rsl_rl.utils import store_code_state
 
+from typing import Callable, Optional
+
 
 class MultiCriticPPORunner:
     """
@@ -132,7 +134,7 @@ class MultiCriticPPORunner:
         self.current_learning_iteration = 0
         self.git_status_repos = [rsl_rl.__file__]
 
-    def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):  # noqa: C901
+    def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False, post_iter_callback: Optional[Callable[[int], None]] = None):  # noqa: C901
         # initialize writer
         if self.log_dir is not None and self.writer is None and not self.disable_logs:
             # Launch either Tensorboard or Neptune & Tensorboard summary writer(s), default: Tensorboard.
@@ -261,6 +263,9 @@ class MultiCriticPPORunner:
                 if self.logger_type in ["wandb", "neptune"] and git_file_paths:
                     for path in git_file_paths:
                         self.writer.save_file(path)
+
+            if post_iter_callback is not None:
+                post_iter_callback(it)
 
         # Save the final model after training
         if self.log_dir is not None and not self.disable_logs:
