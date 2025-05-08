@@ -163,6 +163,7 @@ class MultiCriticPPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        mean_kl_divergence = 0
 
         # generator for mini batches
         assert not self.policy.is_recurrent
@@ -213,6 +214,7 @@ class MultiCriticPPO:
                         axis=-1,
                     )
                     kl_mean = torch.mean(kl)
+                    mean_kl_divergence += kl_mean.item()
 
                     assert not self.is_multi_gpu
 
@@ -274,6 +276,8 @@ class MultiCriticPPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+        if self.desired_kl is not None and self.schedule == "adaptive":
+            mean_kl_divergence /= num_updates
 
         # -- Clear the storage
         self.storage.clear()
@@ -284,5 +288,7 @@ class MultiCriticPPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
+        if self.desired_kl is not None and self.schedule == "adaptive":
+            loss_dict["kl_divergence"] = mean_kl_divergence
 
         return loss_dict
