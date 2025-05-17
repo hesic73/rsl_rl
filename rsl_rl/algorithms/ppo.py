@@ -36,6 +36,7 @@ class PPO:
         max_grad_norm=1.0,
         use_clipped_value_loss=True,
         schedule="fixed",
+        adaptive_lr_factor: float = 1.5,
         desired_kl=0.01,
         device="cpu",
         normalize_advantage_per_mini_batch=False,
@@ -112,6 +113,8 @@ class PPO:
         self.use_clipped_value_loss = use_clipped_value_loss
         self.desired_kl = desired_kl
         self.schedule = schedule
+        self.adaptive_lr_factor = adaptive_lr_factor
+        assert self.adaptive_lr_factor > 1.0, "Adaptive learning rate factor must be greater than 1.0."
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
@@ -290,9 +293,9 @@ class PPO:
                     #       then the learning rate should be the same across all GPUs.
                     if self.gpu_global_rank == 0:
                         if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                            self.learning_rate = max(1e-5, self.learning_rate / self.adaptive_lr_factor)
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
-                            self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+                            self.learning_rate = min(1e-2, self.learning_rate * self.adaptive_lr_factor)
 
                     # Update the learning rate for all GPUs
                     if self.is_multi_gpu:
