@@ -192,6 +192,7 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        mean_kl_divergence = 0
         # -- RND loss
         if self.rnd:
             mean_rnd_loss = 0
@@ -281,6 +282,7 @@ class PPO:
                         axis=-1,
                     )
                     kl_mean = torch.mean(kl)
+                    mean_kl_divergence += kl_mean.item()
 
                     # Reduce the KL divergence across all GPUs
                     if self.is_multi_gpu:
@@ -409,6 +411,8 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+        if self.desired_kl is not None and self.schedule == "adaptive":
+            mean_kl_divergence /= num_updates
         # -- For RND
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
@@ -428,6 +432,8 @@ class PPO:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
+        if self.desired_kl is not None and self.schedule == "adaptive":
+            loss_dict["kl_divergence"] = mean_kl_divergence
 
         return loss_dict
 
