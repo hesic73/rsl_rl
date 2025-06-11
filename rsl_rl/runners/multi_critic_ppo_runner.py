@@ -86,7 +86,8 @@ class MultiCriticPPORunner:
 
         # if using symmetry then pass the environment config object
         if "symmetry_cfg" in self.alg_cfg and self.alg_cfg["symmetry_cfg"] is not None:
-            raise NotImplementedError("symmetry_cfg is not supported yet.")
+            # this is used by the symmetry function for handling different observation terms
+            self.alg_cfg["symmetry_cfg"]["_env"] = env
 
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))

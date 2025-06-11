@@ -68,7 +68,22 @@ class MultiCriticPPO:
 
         # Symmetry components
         if symmetry_cfg is not None:
-            raise NotImplementedError("Symmetry is not implemented yet.")
+            # Check if symmetry is enabled
+            use_symmetry = symmetry_cfg["use_data_augmentation"] or symmetry_cfg["use_mirror_loss"]
+            # Print that we are not using symmetry
+            if not use_symmetry:
+                print("Symmetry not used for learning. We will use it for logging instead.")
+            # If function is a string then resolve it to a function
+            if isinstance(symmetry_cfg["data_augmentation_func"], str):
+                symmetry_cfg["data_augmentation_func"] = string_to_callable(symmetry_cfg["data_augmentation_func"])
+            # Check valid configuration
+            if symmetry_cfg["use_data_augmentation"] and not callable(symmetry_cfg["data_augmentation_func"]):
+                raise ValueError(
+                    "Data augmentation enabled but the function is not callable:"
+                    f" {symmetry_cfg['data_augmentation_func']}"
+                )
+            # Store symmetry configuration
+            self.symmetry = symmetry_cfg
         else:
             self.symmetry = None
 
@@ -168,6 +183,12 @@ class MultiCriticPPO:
         mean_entropy = 0
         mean_kl_divergence = 0
 
+        # -- Symmetry loss
+        if self.symmetry:
+            mean_symmetry_loss = 0
+        else:
+            mean_symmetry_loss = None
+
         # generator for mini batches
         assert not self.policy.is_recurrent
         generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
@@ -192,6 +213,13 @@ class MultiCriticPPO:
             if self.normalize_advantage_per_mini_batch:
                 with torch.no_grad():
                     advantages_batch = (advantages_batch - advantages_batch.mean(dim=0, keepdim=True)) / (advantages_batch.std(dim=0, keepdim=True) + 1e-8)
+
+            # Perform symmetric augmentation
+            if self.symmetry and self.symmetry["use_data_augmentation"]:
+                raise NotImplementedError(
+                    "Symmetric data augmentation is not implemented yet. "
+                )
+
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
@@ -259,6 +287,37 @@ class MultiCriticPPO:
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
 
+            # Symmetry loss
+            if self.symmetry:
+                # obtain the symmetric actions
+                data_augmentation_func = self.symmetry["data_augmentation_func"]
+                obs_batch, _ = data_augmentation_func(
+                    obs=obs_batch, actions=None, env=self.symmetry["_env"], obs_type="policy"
+                )
+
+                # actions predicted by the actor for symmetrically-augmented observations
+                mean_actions_batch = self.policy.act_inference(obs_batch.detach().clone())
+
+                # compute the symmetrically augmented actions
+                # note: we are assuming the first augmentation is the original one.
+                #   We do not use the action_batch from earlier since that action was sampled from the distribution.
+                #   However, the symmetry loss is computed using the mean of the distribution.
+                action_mean_orig = mean_actions_batch[:original_batch_size]
+                _, actions_mean_symm_batch = data_augmentation_func(
+                    obs=None, actions=action_mean_orig, env=self.symmetry["_env"], obs_type="policy"
+                )
+
+                # compute the loss (we skip the first augmentation as it is the original one)
+                mse_loss = torch.nn.MSELoss()
+                symmetry_loss = mse_loss(
+                    mean_actions_batch[original_batch_size:], actions_mean_symm_batch.detach()[original_batch_size:]
+                )
+                # add the loss to the total loss
+                if self.symmetry["use_mirror_loss"]:
+                    loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
+                else:
+                    symmetry_loss = symmetry_loss.detach()
+
             # Compute the gradients
             # -- For PPO
             self.optimizer.zero_grad()
@@ -274,6 +333,9 @@ class MultiCriticPPO:
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy_batch.mean().item()
 
+            if mean_symmetry_loss is not None:
+                mean_symmetry_loss += symmetry_loss.item()
+
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
@@ -281,7 +343,9 @@ class MultiCriticPPO:
         mean_entropy /= num_updates
         if self.desired_kl is not None and self.schedule == "adaptive":
             mean_kl_divergence /= num_updates
-
+        # -- For Symmetry
+        if mean_symmetry_loss is not None:
+            mean_symmetry_loss /= num_updates
         # -- Clear the storage
         self.storage.clear()
 
@@ -291,6 +355,8 @@ class MultiCriticPPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
+        if self.symmetry:
+            loss_dict["symmetry"] = mean_symmetry_loss
         if self.desired_kl is not None and self.schedule == "adaptive":
             loss_dict["kl_divergence"] = mean_kl_divergence
 
